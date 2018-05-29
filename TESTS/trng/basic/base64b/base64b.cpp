@@ -2,89 +2,185 @@
 
 using namespace std;
 
-static const int b64_index[256] = 
-    { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 0,  0,  0,  0,  0,  0,  0,  0,
-      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 0,  0,  0,  0,  0,  0,  0,  0,
-      0,  0,  0, 62, 63, 62, 62, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61,  0,  0,
-      0,  0,  0,  0,  0,  0,  1,  2,  3,  4,  5,  6, 7,  8,  9, 10, 11, 12, 13, 14,
-      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,  0, 0,  0,  0, 63,  0, 26, 27, 28,
-      29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
-      49, 50, 51 };
-
-static const unsigned char b64_table[65] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-string base64_encode(const unsigned char *src, size_t len)
+static char IntToBase64Char(uint8_t intVal)
 {
-    unsigned char *out = NULL, *pos = NULL;
-    const unsigned char *end = NULL, *in = NULL;
-    size_t outlen = 0;
-
-    outlen = 4 * ((len + 2) / 3);
-
-    if (outlen < len)
-        return string();
-
-    string output;
-    output.resize(outlen);
-    out = (unsigned char*)&output[0];
-
-    end = src + len;
-    in = src;
-    pos = out;
-
-    for (; end - in >= 3;)
-    {
-        *pos++ = b64_table[in[0] >> 2];
-        *pos++ = b64_table[((in[0] & 0x03) << 4) | (in[1] >> 4)];
-        *pos++ = b64_table[((in[1] & 0x0f) << 2) | (in[2] >> 6)];
-        *pos++ = b64_table[in[2] & 0x3f];
-        in += 3;
-    }
-
-    if (end - in) 
-    {
-        *pos++ = b64_table[in[0] >> 2];
-        if (end - in == 1) 
-        {
-            *pos++ = b64_table[(in[0] & 0x03) << 4];
-            *pos++ = '=';
-        }
-        else 
-        {
-            *pos++ = b64_table[((in[0] & 0x03) << 4) | (in[1] >> 4)];
-            *pos++ = b64_table[(in[1] & 0x0f) << 2];
-        }
-        *pos++ = '=';
-    }
-
-    return output;
+    const char* base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    return base64Digits[intVal & 0x3F];
 }
 
-string b64decode(const void *src, const size_t len)
+
+#define BASE_64_PAD 0xFF
+static base64_result_e Base64CharToInt(char base64, uint8_t* intVal)
 {
-    unsigned char *p = (unsigned char *)src;
-    int pad = len > 0 && (len % 4 || p[len - 1] == '=');
-    const size_t L = ((len + 3) / 4 - pad) * 4;
-    string str(L / 4 * 3 + pad, '\0');
-
-    for (size_t i = 0, j = 0; i < L; i += 4)
+    if (NULL == intVal)
     {
-        int n = b64_index[p[i]] << 18 | b64_index[p[i + 1]] << 12 | b64_index[p[i + 2]] << 6 | b64_index[p[i + 3]];
-        str[j++] = n >> 16;
-        str[j++] = n >> 8 & 0xFF;
-        str[j++] = n & 0xFF;
+        return BASE64_INVALID_PARAMETER;
     }
-    if (pad)
-    {
-        int n = b64_index[p[L]] << 18 | b64_index[p[L + 1]] << 12;
-        str[str.size() - 1] = n >> 16;
 
-        if (len > L + 2 && p[L + 2] != '=')
+    if ((base64 >= 'A') && (base64 <= 'Z'))
+        *intVal = base64 - 'A' ;     
+    else if((base64 >= 'a')&&(base64 <= 'z'))
+        *intVal = base64 - 'a' + 26;
+    else if ((base64 >= '0')&&(base64 <= '9'))
+        *intVal = base64 - '0' + 52;
+    else if (base64 == '+')
+        *intVal = 62;
+    else if (base64 == '/')
+        *intVal = 63;
+    else if (base64 == '=')
+        *intVal = BASE_64_PAD;
+    else 
+    {
+        return BASE64_ERROR;
+    }
+    
+    return BASE64_SUCCESS;
+}
+
+base64_result_e esfs_DecodeNBase64(const char* string, 
+                                uint32_t stringMaxSize, 
+                                void* buffer,
+                                uint32_t bufferSize, 
+                                uint32_t* lengthWritten, 
+                                uint32_t* charsProcessed)
+{
+    base64_result_e result = BASE64_SUCCESS;
+    uint32_t bitOffset =0;
+    uint8_t* writePtr = (uint8_t*)buffer;
+    uint8_t* bufferEnd = (uint8_t*)buffer + bufferSize;
+    uint8_t tempVal = 0;
+    uint32_t currPos = 0;
+    uint32_t localBytesWritten = 0;
+    uint32_t localCharsProcessed = 0;
+    bool isEndOfString = false;
+
+    if ((NULL == string) || (NULL == buffer) || (bufferSize == 0))
+    {
+        return BASE64_INVALID_PARAMETER;
+    }
+
+    *writePtr = 0;
+    while (( string[currPos] != NULL ) &&
+            ( currPos < stringMaxSize ) &&
+            ( writePtr  <  bufferEnd ) &&
+            ( !isEndOfString ))
+    {
+        uint8_t val;
+
+        if (string[currPos] == 0  || currPos >= stringMaxSize)
+            break;
+        
+        result = Base64CharToInt(string[currPos++], &val);
+        if (result != BASE64_SUCCESS)
+            break;
+
+        if (val != BASE_64_PAD) 
         {
-            n |= b64_index[p[L + 2]] << 6;
-            str.push_back(n >> 8 & 0xFF);
+            if(bitOffset <= 2)
+            {
+                tempVal |= val << (2 - bitOffset);
+                if (bitOffset == 2)
+                {
+                    *writePtr++ = tempVal;
+                    tempVal = 0;
+                }
+            }   
+            else 
+            {
+                *writePtr++ = (uint8_t)(tempVal | (val >> (bitOffset - 2)));
+                tempVal = (uint8_t)(val << (10 - bitOffset));
+            }
+        }
+        else // found BASE_64_PAD
+        {
+            // At most two pad characters may occur at the end of the encoded stream
+            if (bitOffset == 2)
+                isEndOfString = true;  // The last padding byte has been processed.
+            else if (bitOffset != 4)
+                return BASE64_ERROR;  // Incorrect padding 
+        }
+        
+        bitOffset = (bitOffset + 6) & 0x7;
+        if (bitOffset == 0)
+        {
+            localBytesWritten = (uint32_t)(writePtr - (uint8_t*)buffer);
+            localCharsProcessed = currPos;
         }
     }
-    return str;
+    if (charsProcessed == NULL)
+        localBytesWritten = (uint32_t)(writePtr - (uint8_t*)buffer);
+    else 
+        *charsProcessed = localCharsProcessed;
+    if (lengthWritten != NULL)
+        *lengthWritten = localBytesWritten;
+    else if (bufferSize != localBytesWritten)
+        return BASE64_BUFFER_TOO_SMALL;
+
+    // Check if additional bytes should have been processed but buffer isn't sufficient.
+    if (( result == BASE64_SUCCESS ) &&
+        ( !isEndOfString ) &&
+        ( string[currPos] != '=' ) &&
+        ( string[currPos] != NULL ) &&
+        ( currPos < stringMaxSize) )
+        return BASE64_BUFFER_TOO_SMALL;
+
+    if (result != BASE64_SUCCESS)
+        return result;
+
+    return BASE64_SUCCESS;
+}
+
+base64_result_e esfs_EncodeBase64(const void* buffer, uint32_t bufferSize, char* string, uint32_t stringSize)
+{
+    uint32_t bitOffset = 0;
+
+    const uint8_t* readPtr = (const uint8_t*)buffer;
+    const uint8_t* bufferEnd = (const uint8_t*)buffer + bufferSize;
+
+    char* writePtr = string;
+    char* stringEnd = string + stringSize - 1;
+
+    if ((NULL == string) || (NULL == buffer) || (stringSize == 0))
+        return BASE64_INVALID_PARAMETER;
+
+    stringSize--;
+    while(readPtr < bufferEnd && writePtr < stringEnd)
+    {
+        uint8_t tempVal = 0;
+        switch (bitOffset)
+        {
+            case 0:
+                *writePtr++ = IntToBase64Char(*readPtr >> 2);                 // take upper 6 bits
+                break;
+            case 6:
+                tempVal = *readPtr++ << 4;
+                if (readPtr < bufferEnd)
+                    tempVal |= *readPtr >> 4;
+                *writePtr++ = IntToBase64Char(tempVal);
+                break;
+            case 4:
+                tempVal = *readPtr++ << 2;
+                if (readPtr < bufferEnd)
+                    tempVal |= *readPtr >> 6;
+                *writePtr++ = IntToBase64Char(tempVal);
+                break;
+            case 2:
+                *writePtr++ = IntToBase64Char(*readPtr++);
+                break;
+            default:
+                return BASE64_ERROR; // we should never reach this code.
+        }
+        bitOffset = (bitOffset + 6) & 0x7;
+    }
+    while (bitOffset > 0 && writePtr < stringEnd)
+    {
+        *writePtr++ = '=';
+        bitOffset = (bitOffset + 6) & 0x7;
+    }
+    *writePtr = 0;
+
+    if ((readPtr < bufferEnd) || (bitOffset != 0))
+        return (BASE64_BUFFER_TOO_SMALL);
+
+    return(BASE64_SUCCESS);
 }

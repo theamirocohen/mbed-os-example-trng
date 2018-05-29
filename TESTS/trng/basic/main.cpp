@@ -19,10 +19,13 @@
 * there will not be any similar patterns in it, that kind of data will be impossible to
 * compress, if compression will acuur the test will result in failure.
 *
-* The test is composed out of two parts: 
+* The test is composed out of three parts: 
 * the first, generate a trng buffer and try to compress it, at the end of first part 
-* we will reset the device for the second part, in this part we will again generate a 
-* trng buffer to see that the same trng output is not generated, the new trng data will
+* we will reset the device. 
+* In second part we will generate a trng buffer with a different buffer size and try to
+* compress it.
+* In the third part we will again generate a trng buffer to see that the same trng output 
+* is not generated as the stored trng buffer from part one (before reseting), the new trng data will
 * be concatenated to the trng data from the first part and then try to compress it 
 * together, if there are similar patterns the compression will succeed.
 *
@@ -68,90 +71,147 @@ extern "C" {
 
 using namespace utest::v1;
 
+#define NVSTORE_ENABLED 1
+
+static int fill_buffer_trng(uint8_t *buffer, trng_t *trng_obj, size_t trng_len)
+{
+    size_t temp_size = 0, output_length = 0;
+    int trng_res = 0;
+    uint8_t *temp_in_buf = buffer;
+
+    trng_init(trng_obj);
+    memset(buffer, 0, BUFFER_LEN);
+
+    while (true)
+    {
+        trng_res = trng_get_bytes(trng_obj, temp_in_buf, trng_len, &output_length);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, trng_res, "trng_get_bytes error!");
+        temp_size += output_length;
+        temp_in_buf += output_length;
+        trng_len -= output_length;
+        if (temp_size >= trng_len)
+        {
+            break;
+        }
+    }
+
+    temp_in_buf = NULL;
+    trng_free(trng_obj);
+    return 0;
+}
+
 static void compress_and_compare(char *key, char *value)
 {
     trng_t trng_obj;
-    uint8_t out_comp_buf[BUFFER_LEN] = {0}, buffer[BUFFER_LEN] = {0}, input_buf[BUFFER_LEN * 2] = {0};
-    size_t input_buf_len = 0, temp_size = 0, trng_len = BUFFER_LEN;
-    uint8_t *temp_in_buf = NULL;
-    int trng_res = 0;
-    unsigned int comp_res = 0;
+    uint8_t out_comp_buf[BUFFER_LEN * 2] = {0}, buffer[BUFFER_LEN] = {0};
+    uint8_t input_buf[BUFFER_LEN * 2] = {0}, temp_buff[BUFFER_LEN * 2] = {0};
+    size_t out_comp_buf_len = 0;
+    unsigned int comp_res = 0, result = 0;
     unsigned char htab[32][32] = {0};
-    NVStore &nvstore = NVStore::get_instance();
 
-    /*Output compressed data size is smaller in COMPRESS_TEST_PERCENTAGE from input data*/
-    unsigned int out_comp_buf_len = (unsigned int)((BUFFER_LEN *COMPRESS_TEST_PERCENTAGE) / 100);
+#if NVSTORE_ENABLED
+    NVStore &nvstore = NVStore::get_instance();
+#endif
 
     /*At the begining of step 2 load trng buffer from step 1*/
     if (strcmp(key, MSG_TRNG_TEST_STEP2) == 0)
     {
 #if NVSTORE_ENABLED
         uint16_t actual = 0;
-        int result = nvstore.get(NVKEY, sizeof(buffer), buffer, actual);
+        result = nvstore.get(NVKEY, sizeof(buffer), buffer, actual);
         TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
 #else
         /*Using base64 to decode data sent from host*/
-        string str(b64decode((const void *)value, MSG_VALUE_LEN));
-        memcpy(buffer, str.c_str(), BUFFER_LEN);
+        uint32_t lengthWritten = 0;
+	    uint32_t charsProcessed = 0;
+        result = esfs_DecodeNBase64((const char*)value, MSG_VALUE_LEN, buffer, BUFFER_LEN, &lengthWritten, &charsProcessed);
+        TEST_ASSERT_EQUAL(0, result);
 #endif
         memcpy(input_buf, buffer, BUFFER_LEN);
     }
 
-    trng_init(&trng_obj);
-    memset(buffer, 0, BUFFER_LEN);
-    temp_in_buf = buffer;
-
     /*Fill buffer with trng values*/
-    while (true)
-    {
-        trng_res = trng_get_bytes(&trng_obj, temp_in_buf, trng_len, &input_buf_len);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, trng_res, "trng_get_bytes error!");
-        temp_size += input_buf_len;
-        temp_in_buf += input_buf_len;
-        trng_len -= input_buf_len;
-        if (temp_size == BUFFER_LEN)
-        {
-            break;
-        }
-    }
+    result = fill_buffer_trng(buffer, &trng_obj, sizeof(buffer));
+    TEST_ASSERT_EQUAL(0, result);
 
-    trng_free(&trng_obj);
-
-    /*comp_res equals to 0 means that the compress function wasn't able to fit the compressed buffer
-     into out_comp_buf (which is threshold % of buffer), this means that the trng data is random*/
+    /*lzf_compress will try to compress the random data, if it succeeded it means the data is not really random*/
     if (strcmp(key, MSG_TRNG_TEST_STEP1) == 0)
     {
+        printf("\n******TRNG_TEST_STEP1*****\n");
+        out_comp_buf_len = BUFFER_LEN + (BUFFER_LEN / 4);
         comp_res = lzf_compress((const void *)buffer, 
                                 (unsigned int)sizeof(buffer), 
                                 (void *)out_comp_buf, 
                                 out_comp_buf_len, 
                                 (unsigned char **)htab);
+        if (comp_res >= BUFFER_LEN)
+        {
+            printf("trng_get_bytes for buffer size %d was successful", sizeof(buffer));
+        }
+        else
+        {
+            printf("trng_get_bytes for buffer size %d was unsuccessful", sizeof(buffer));
+            TEST_ASSERT(false);
+        }
+        printf("\n******FINISHED_TRNG_TEST_STEP1*****\n\n");
     }
     else if (strcmp(key, MSG_TRNG_TEST_STEP2) == 0)
     {
+        printf("\n******TRNG_TEST_STEP2*****\n");
+        result = fill_buffer_trng(temp_buff, &trng_obj, sizeof(temp_buff));
+        TEST_ASSERT_EQUAL(0, result);
+
+        out_comp_buf_len = 2 * BUFFER_LEN + (BUFFER_LEN / 2);
+        comp_res = lzf_compress((const void *)temp_buff, 
+                                (unsigned int)sizeof(temp_buff), 
+                                (void *)out_comp_buf, 
+                                out_comp_buf_len, 
+                                (unsigned char **)htab);
+        
+        if (comp_res >= BUFFER_LEN)
+        {
+            printf("trng_get_bytes for buffer size %d was successful", sizeof(temp_buff));
+        }
+        else
+        {
+            printf("trng_get_bytes for buffer size %d was unsuccessful", sizeof(temp_buff));
+            TEST_ASSERT(false);
+        }
+        printf("\n******FINISHED_TRNG_TEST_STEP2*****\n\n");
+
+        printf("******TRNG_TEST_STEP3*****\n");
+
         memcpy(input_buf + BUFFER_LEN, buffer, BUFFER_LEN);
         comp_res = lzf_compress((const void *)input_buf, 
                                 (unsigned int)sizeof(input_buf), 
                                 (void *)out_comp_buf, 
                                 out_comp_buf_len, 
                                 (unsigned char **)htab);
+
+        if (comp_res >= BUFFER_LEN)
+        {
+            printf("compression for concatenated buffer size %d after reset was successful", sizeof(input_buf));
+        }
+        else
+        {
+            printf("compression for concatenated buffer size %d after reset was unsuccessful", sizeof(input_buf));
+            TEST_ASSERT(false);
+        }
+        printf("\n******FINISHED_TRNG_TEST_STEP3*****\n\n");
     }
-
-    temp_in_buf = NULL;
-
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, comp_res, "compression of trng buffer was successful - trng buffer is not random!");
-    printf("compression of trng buffer was not successful - trng buffer is indeed random!\n");
 
     /*At the end of step 1 store trng buffer and reset the device*/
     if (strcmp(key, MSG_TRNG_TEST_STEP1) == 0)
     {
+        int result = 0;
 #if NVSTORE_ENABLED
-        int result = nvstore.set(NVKEY, sizeof(buffer), buffer);
+        result = nvstore.set(NVKEY, sizeof(buffer), buffer);
         TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
 #else
         /*Using base64 to encode data sending from host*/
-        string str(base64_encode((const unsigned char *)buffer, sizeof(buffer)));
-        greentea_send_kv(MSG_TRNG_BUFFER, (const char *)str.c_str());
+        result = esfs_EncodeBase64(buffer, BUFFER_LEN, (char*)out_comp_buf, sizeof(out_comp_buf));
+        TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
+        greentea_send_kv(MSG_TRNG_BUFFER, (const char *)out_comp_buf);
 #endif
         system_reset();
         TEST_ASSERT_MESSAGE(false, "system_reset() did not reset the device as expected.");
@@ -174,14 +234,15 @@ void trng_test()
 
     if (strcmp(key, MSG_TRNG_TEST_STEP1) == 0)
     {
-        printf("******MSG_TRNG_TEST_STEP1*****\n");
+        /*create trng data buffer and try to compress it, store it for later checks*/
         compress_and_compare(key, value);
         return trng_test();
     }
 
     if (strcmp(key, MSG_TRNG_TEST_STEP2) == 0)
     {
-        printf("******MSG_TRNG_TEST_STEP2*****\n");
+        /*create another trng data buffer and concatenate it to the stored trng data buffer
+        try to compress them both*/
         compress_and_compare(key, value);
     }
 }

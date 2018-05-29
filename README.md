@@ -6,7 +6,11 @@ TRNG test example for Mbed OS
 
 This is a test example of an application that uses the TRNG APIs.
 
-The application invokes the TRNG APIs and prints the results after each such invocation, the test is composed out of two parts: the first, generate a trng buffer and try to compress it, if compressession is successful the trng does not output real random data, at the end of first part we will reset the device for the second part, in this part we will again generate a trng buffer to see that the same trng output is not generated.
+The application invokes the TRNG APIs and prints the results after each such invocation, 
+The test is composed out of three parts: 
+the first, generate a trng buffer and try to compress it, at the end of first part we will reset the device. 
+In second part we will generate a trng buffer with a different buffer size and try to compress it.
+In the third part we will again generate a trng buffer to see that the same trng output is not generated as the stored trng buffer from part one (before reseting), the new trng data will be concatenated to the trng data from the first part and then try to compress it together, if there are similar patterns the compression will succeed.
 
 ## Required hardware
 * An [FRDM-K64F](http://os.mbed.com/platforms/FRDM-K64F/) development board.

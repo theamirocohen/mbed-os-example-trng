@@ -70,8 +70,9 @@ extern "C" {
 
 #define NVKEY                           1                           //NVstore key for storing and loading data
 
-/*there are some issues with nvstore and greentea reset, so for now nvstore is disabled*/
-#define NVSTORE_ENABLED                 0
+/*there are some issues with nvstore and greentea reset, so for now nvstore is disabled,
+ *When  solved delete current define and replace all NVSTORE_RESET with NVSTORE_ENABLED*/
+#define NVSTORE_RESET                   (NVSTORE_ENABLED & 0)
 
 using namespace utest::v1;
 
@@ -111,14 +112,14 @@ static void compress_and_compare(char *key, char *value)
     unsigned int comp_res = 0, result = 0;
     unsigned char htab[32][32] = {0};
 
-#if NVSTORE_ENABLED
+#if NVSTORE_RESET
     NVStore &nvstore = NVStore::get_instance();
 #endif
 
     /*At the begining of step 2 load trng buffer from step 1*/
     if (strcmp(key, MSG_TRNG_TEST_STEP2) == 0)
     {
-#if NVSTORE_ENABLED
+#if NVSTORE_RESET
         uint16_t actual = 0;
         result = nvstore.get(NVKEY, sizeof(buffer), buffer, actual);
         TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
@@ -206,7 +207,7 @@ static void compress_and_compare(char *key, char *value)
     if (strcmp(key, MSG_TRNG_TEST_STEP1) == 0)
     {
         int result = 0;
-#if NVSTORE_ENABLED
+#if NVSTORE_RESET
         result = nvstore.set(NVKEY, sizeof(buffer), buffer);
         TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
 #else

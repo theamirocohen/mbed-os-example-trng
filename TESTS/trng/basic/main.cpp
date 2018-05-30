@@ -38,8 +38,6 @@
 * to ensure all characters will be transmitted correctly.
 */
 
-#if defined(DEVICE_TRNG)
-
 #include "greentea-client/test_env.h"
 #include "unity/unity.h"
 #include "utest/utest.h"
@@ -52,6 +50,10 @@
 extern "C" {
 #include "lzf.h"
 }
+
+#if !DEVICE_TRNG
+#error [NOT_SUPPORTED] TRNG API not supported for this target
+#endif
 
 #define MSG_VALUE_DUMMY                 "0"
 #define MSG_VALUE_LEN                   64
@@ -190,11 +192,11 @@ static void compress_and_compare(char *key, char *value)
 
         if (comp_res >= BUFFER_LEN)
         {
-            printf("compression for concatenated buffer size %d after reset was successful", sizeof(input_buf));
+            printf("compression for concatenated buffer after reset was successful");
         }
         else
         {
-            printf("compression for concatenated buffer size %d after reset was unsuccessful", sizeof(input_buf));
+            printf("compression for concatenated buffer after reset was unsuccessful");
             TEST_ASSERT(false);
         }
         printf("\n******FINISHED_TRNG_TEST_STEP3*****\n\n");
@@ -271,5 +273,3 @@ int main()
 
     return ret;
 }
-
-#endif

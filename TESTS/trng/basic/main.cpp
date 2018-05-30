@@ -43,9 +43,8 @@
 #include "utest/utest.h"
 #include "hal/trng_api.h"
 #include "base64b.h"
-#include <stdio.h>
-
 #include "nvstore.h"
+#include <stdio.h>
 
 /*Include LZF Compressor librart */
 extern "C" {
@@ -57,10 +56,8 @@ extern "C" {
 #define MSG_KEY_LEN                     32
 
 #define BUFFER_LEN                      (MSG_VALUE_LEN/2)           //size of first step data, and half of the second step data
-#define COMPRESS_TEST_PERCENTAGE        99                          //size (in precentage) of compressed output data
 
 #define MSG_TRNG_READY                  "ready"
-#define MSG_TRNG_FINISH                 "finish"
 #define MSG_TRNG_BUFFER                 "buffer"
 
 #define MSG_TRNG_TEST_STEP1             "check_step1"
@@ -69,9 +66,10 @@ extern "C" {
 
 #define NVKEY                           1                           //NVstore key for storing and loading data
 
-using namespace utest::v1;
+/*there are some issues with nvstore and greentea reset, so for now nvstore is disabled*/
+#define NVSTORE_ENABLED                 0
 
-#define NVSTORE_ENABLED 1
+using namespace utest::v1;
 
 static int fill_buffer_trng(uint8_t *buffer, trng_t *trng_obj, size_t trng_len)
 {

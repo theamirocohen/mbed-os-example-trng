@@ -8,7 +8,6 @@ static char IntToBase64Char(uint8_t intVal)
     return base64Digits[intVal & 0x3F];
 }
 
-
 #define BASE_64_PAD 0xFF
 static base64_result_e Base64CharToInt(char base64, uint8_t* intVal)
 {

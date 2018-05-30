@@ -38,6 +38,8 @@
 * to ensure all characters will be transmitted correctly.
 */
 
+#if defined(DEVICE_TRNG)
+
 #include "greentea-client/test_env.h"
 #include "unity/unity.h"
 #include "utest/utest.h"
@@ -52,7 +54,7 @@ extern "C" {
 }
 
 #define MSG_VALUE_DUMMY                 "0"
-#define MSG_VALUE_LEN                   128
+#define MSG_VALUE_LEN                   64
 #define MSG_KEY_LEN                     32
 
 #define BUFFER_LEN                      (MSG_VALUE_LEN/2)           //size of first step data, and half of the second step data
@@ -269,3 +271,5 @@ int main()
 
     return ret;
 }
+
+#endif

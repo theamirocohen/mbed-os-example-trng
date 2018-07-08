@@ -17,7 +17,7 @@
 /*
 * The test is based on the assumption that trng will generate random data, random so
 * there will not be any similar patterns in it, that kind of data will be impossible to
-* compress, if compression will acuur the test will result in failure.
+* compress, if compression will occur the test will result in failure.
 *
 * The test is composed out of three parts:
 * the first, generate a trng buffer and try to compress it, at the end of first part

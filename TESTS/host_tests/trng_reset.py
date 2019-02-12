@@ -14,9 +14,9 @@ limitations under the License.
 """
 
 """
-This script is the host script for trng test sequence, it send the 
-step signaling sequence and receive and transmit data to the device after 
-reset if necesarry (default loading and storing while reseting the device
+This script is the host script for trng test sequence, it send the
+step signaling sequence and receive and transmit data to the device after
+reset if necesarry (default loading and storing mechanism while reseting the device
 is NVstore, in case NVstore isn't enabled we'll use current infrastructure,
 for more details see main.cpp file)
 """
@@ -112,7 +112,7 @@ class TRNGResetTest(BaseHostTest):
 
         if self.reset == False:
             raise RuntimeError('Phase 1: Platform did not reset as expected.')
-            
+
         """Test step 2 (After reset)
         """
         self.finish = False

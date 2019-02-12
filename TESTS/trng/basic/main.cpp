@@ -32,7 +32,7 @@
 * We need to store and load the first part data before and after reset, the mechanism
 * we chose is NVstore, mainly because its simplicity and the fact it is not platform
 * dependent, in case a specific board does not support NVstore we will use the
-* mbed greentea platform for sending and receving the data from the device to the
+* mbed greentea platform for sending and receiving the data from the device to the
 * host running the test and back, the problem with this mechanism is that it doesn't handle
 * well certain characters, especially non ASCII ones, so we used the base64 algorithm
 * to ensure all characters will be transmitted correctly.
